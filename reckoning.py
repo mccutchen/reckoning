@@ -1,4 +1,4 @@
-import datetime, logging, random, sys, time
+import datetime, hashlib, logging, random, sys, time
 import mechanize
 
 QUEUE_URL = 'https://appraisalzone.lendervend.com/SECURE/plus/pfac/QueuePage.aspx'
@@ -11,6 +11,8 @@ USERNAME_FIELD = 'ctl00$cph_content$tb_username'
 PASSWORD_FIELD = 'ctl00$cph_content$tb_password'
 
 USER_AGENT = 'Mozilla/5.0 (Windows; U; MSIE 7.0; Windows NT 6.0; en-US)'
+
+EMPTY_CHECKSUM = '256f163a93109a1b99b178adeeb7d209'
 
 def get_browser():
 	browser = mechanize.Browser()
@@ -49,21 +51,20 @@ def login(browser):
 def check_queue(browser):
 	print 'Checking queue...'
 	browser.open(QUEUE_URL)
-
-	filename = 'output/%s.html' % time.strftime('%Y%m%d-%H%M%S')
-	fp = file(filename, 'w')
-	fp.write(browser.response().read())
-	fp.close()
-
 	browser.select_form(name=FORM_NAME)
 
-	if len(browser.form.controls) > 3:
-		print ' - Extra form controls found.  Saving to %s...' % filename
-		print ' - Fields: %s' % ', '.join(c.name for c in browser.form.controls)
-		print ' - Exiting.'
+	src = browser.response().read()
+	checksum = hashlib.md5(src).hexdigest()
+	if checksum != EMPTY_CHECKSUM:
+		filename = '%s.html' % time.strftime('%Y%m%d-%H%M%S')
+		file(filename, 'w').write(src)
+		print ' * Response changed!  Saving to %s...' % filename
+		print ' * Fields: %s' % ', '.join(c.name for c in browser.form.controls)
+		print ' * Exiting.'
 		sys.exit()
 	else:
 		print ' - Nothing to see here...'
+
 	return browser
 
 def main():
@@ -82,7 +83,7 @@ def main():
 			#login(browser)
 			#check_queue(browser)
 
-		delay = random.randint(30, 90)
+		delay = random.randint(10, 60)
 		print 'Sleeping for %d seconds...\n' % delay
 		time.sleep(delay)
 
