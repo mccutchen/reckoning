@@ -14,9 +14,13 @@ USER_AGENT = 'Mozilla/5.0 (Windows; U; MSIE 7.0; Windows NT 6.0; en-US)'
 
 EMPTY_CHECKSUM = '256f163a93109a1b99b178adeeb7d209'
 
+JOB_LIMIT = 5
+JOB_COUNT = 0
+
 def get_browser():
 	browser = mechanize.Browser()
-	# browser.addheaders = [('User-Agent', USER_AGENT)]
+
+	# I'm not sure which of these are required
 	browser.addheaders = [
 		('User-Agent', 'Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10.5; en-US; rv:1.9.0.11) Gecko/2009060214 Firefox/3.0.11'),
 		('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'),
@@ -26,15 +30,18 @@ def get_browser():
 		('Keep-Alive', '300'),
 		('Connection', 'keep-alive')
 		]
-	browser.set_handle_robots(False)
-	#browser.set_handle_refresh(False)
-	#browser.set_debug_redirects(True)
-	# browser.set_debug_responses(True)
-	#browser.set_debug_http(True)
 
-	#logger = logging.getLogger("mechanize")
-	#logger.addHandler(logging.StreamHandler(sys.stdout))
-	#logger.setLevel(logging.DEBUG)
+	browser.set_handle_robots(False)
+	return browser
+
+def setup_debug(browser):
+	browser.set_debug_redirects(True)
+	# browser.set_debug_responses(True)
+	browser.set_debug_http(True)
+
+	logger = logging.getLogger("mechanize")
+	logger.addHandler(logging.StreamHandler(sys.stdout))
+	logger.setLevel(logging.DEBUG)
 
 	return browser
 
@@ -42,28 +49,47 @@ def login(browser):
 	print 'Logging in...'
 	browser.open(LOGIN_URL)
 	# TODO: browser.form = list(browser.forms())[0] ?
-	browser.select_form(name=FORM_NAME)
+	browser.select_form(nr=0)
 	browser[USERNAME_FIELD] = USERNAME
 	browser[PASSWORD_FIELD] = PASSWORD
 	browser.submit()
 	return browser
 
+def job_filter(control):
+	return control.type == 'radio'
+
 def check_queue(browser):
 	print 'Checking queue...'
 	browser.open(QUEUE_URL)
-	browser.select_form(name=FORM_NAME)
+	browser.select_form(nr=0)
 
-	src = browser.response().read()
-	checksum = hashlib.md5(src).hexdigest()
-	if checksum != EMPTY_CHECKSUM:
-		filename = '%s.html' % time.strftime('%Y%m%d-%H%M%S')
-		file(filename, 'w').write(src)
-		print ' * Response changed!  Saving to %s...' % filename
-		print ' * Fields: %s' % ', '.join(c.name for c in browser.form.controls)
+	if filter(job_filter, browser.form.controls):
+		return get_jobs(browser)
+	else:
+		print ' - Found no jobs...'
+
+	return browser
+
+def get_jobs(browser):
+	job_controls = filter(job_filter, browser.form.controls)
+	if len(job_controls) + JOB_COUNT >= JOB_LIMIT:
+		job_controls = job_controls[:JOB_LIMIT-JOB_COUNT]
+
+	print ' * Getting %d job(s)...' % len(job_controls)
+	for control in job_controls:
+		control.value = ['1']
+
+	browser.submit()
+
+	filename = 'response-%s.html' % time.strftime('%Y%m%d-%H%M%S')
+	print ' * Writing response to %s...' % filename
+	file(filename, 'w').write(browser.response.read())
+
+	JOB_COUNT += len(job_controls)
+	if JOB_COUNT >= JOB_LIMIT:
+		print ' * Reached job limit for this session.'
 		print ' * Exiting.'
 		sys.exit()
-	else:
-		print ' - Nothing to see here...'
 
 	return browser
 
