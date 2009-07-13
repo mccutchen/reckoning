@@ -19,37 +19,27 @@ JOB_COUNT = 0
 
 JOB_ID_RE = r"\('([\w$]+)','(\d+)'\)"
 
-def get_browser():
-	"""Creates a browser object and prepares it to masquerade as a
-	real web browser by making it send appropriate headers with its
-	requests."""
-	browser = mechanize.Browser()
 
-	# I'm not sure which of these are required
-	browser.addheaders = [
-		('User-Agent', 'Mozilla/5.0 (Macintosh; U; Intel Mac OS X '
-		 '10.5; en-US; rv:1.9.0.11) Gecko/2009060214 Firefox/3.0.11'),
-		('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'),
-		('Accept-Language', 'en-us,en;q=0.5'),
-		('Accept-Encoding', 'gzip,deflate'),
-		('Accept-Charset', 'ISO-8859-1,utf-8;q=0.7,*;q=0.7'),
-		('Keep-Alive', '300'),
-		('Connection', 'keep-alive')]
+def main():
+	"""The program's main loop.  Creates a browser object, signs it in
+	to the site, and then polls the queue page at random intervals
+	looking for new jobs."""
 
-	browser.set_handle_robots(False)
-	return browser
+	start = datetime.datetime.now()
+	print 'Starting at %s' % start
 
-def setup_debug(browser):
-	"""Makes the browser print debugging information."""
-	browser.set_debug_redirects(True)
-	# browser.set_debug_responses(True)
-	browser.set_debug_http(True)
+	# Get a browser object to work with and log in to the site
+	browser = get_browser()
+	login(browser)
 
-	logger = logging.getLogger("mechanize")
-	logger.addHandler(logging.StreamHandler(sys.stdout))
-	logger.setLevel(logging.DEBUG)
+	# Until an error occurs or the maximum number of jobs have been
+	# fetched, check on the job queue at random intervals
+	while 1:
+		check_queue(browser)
 
-	return browser
+		delay = random.randint(10, 60)
+		print 'Sleeping for %d seconds...\n' % delay
+		time.sleep(delay)
 
 def login(browser):
 	"""Logs the browser object in to the AppraisalZone web site with
@@ -61,11 +51,6 @@ def login(browser):
 	browser[PASSWORD_FIELD] = PASSWORD
 	browser.submit()
 	return browser
-
-def job_filter(control):
-	"""Filter function used to extract the job controls from the queue
-	form."""
-	return control.type == 'radio'
 
 def check_queue(browser):
 	"""Checks the queue page to see if there are any jobs listed on
@@ -79,25 +64,6 @@ def check_queue(browser):
 	else:
 		print ' - Found no jobs...'
 	return browser
-
-def get_job_id(control):
-	"""Pulls the ASP.NET postback control name and the job id out of
-	the 'onclick' event associated with the given control, which
-	should be a radio control representing the yes or no answers for
-	signing up for a job in the queue."""
-	assert len(control.items) == 2, \
-		'Expected 2 items in the radio control, got %d' % len(control.items)
-	item = control.items[-1]
-
-	assert 'onclick' in item.attrs, \
-		'No onclick handler found for item %s' % item.id
-	onclick = item.attrs['onclick']
-
-	match = re.search(JOB_ID_RE, onclick)
-	assert match is not None, \
-		'No job ID found in onclick event: %s' % onclick
-
-	return match.groups()
 
 def get_job(browser):
 	"""Signs up for the first job in the queue."""
@@ -149,26 +115,66 @@ def get_job(browser):
 	# jobs available
 	return check_queue(browser)
 
-def main():
-	"""The program's main loop.  Creates a browser object, signs it in
-	to the site, and then polls the queue page at random intervals
-	looking for new jobs."""
 
-	start = datetime.datetime.now()
-	print 'Starting at %s' % start
+######################################################################
+# Utility functions
+######################################################################
+def get_job_id(control):
+	"""Pulls the ASP.NET postback control name and the job id out of
+	the 'onclick' event associated with the given control, which
+	should be a radio control representing the yes or no answers for
+	signing up for a job in the queue."""
+	assert len(control.items) == 2, \
+		'Expected 2 items in the radio control, got %d' % len(control.items)
+	item = control.items[-1]
 
-	# Get a browser object to work with and log in to the site
-	browser = get_browser()
-	login(browser)
+	assert 'onclick' in item.attrs, \
+		'No onclick handler found for item %s' % item.id
+	onclick = item.attrs['onclick']
 
-	# Until an error occurs or the maximum number of jobs have been
-	# fetched, check on the job queue at random intervals
-	while 1:
-		check_queue(browser)
+	match = re.search(JOB_ID_RE, onclick)
+	assert match is not None, \
+		'No job ID found in onclick event: %s' % onclick
 
-		delay = random.randint(10, 60)
-		print 'Sleeping for %d seconds...\n' % delay
-		time.sleep(delay)
+	return match.groups()
+
+def job_filter(control):
+	"""Filter function used to extract the job controls from the queue
+	form."""
+	return control.type == 'radio'
+
+def setup_debug(browser):
+	"""Makes the browser print debugging information."""
+	browser.set_debug_redirects(True)
+	# browser.set_debug_responses(True)
+	browser.set_debug_http(True)
+
+	logger = logging.getLogger("mechanize")
+	logger.addHandler(logging.StreamHandler(sys.stdout))
+	logger.setLevel(logging.DEBUG)
+
+	return browser
+
+def get_browser():
+	"""Creates a browser object and prepares it to masquerade as a
+	real web browser by making it send appropriate headers with its
+	requests."""
+	browser = mechanize.Browser()
+
+	# I'm not sure which of these are required
+	browser.addheaders = [
+		('User-Agent', 'Mozilla/5.0 (Macintosh; U; Intel Mac OS X '
+		 '10.5; en-US; rv:1.9.0.11) Gecko/2009060214 Firefox/3.0.11'),
+		('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'),
+		('Accept-Language', 'en-us,en;q=0.5'),
+		('Accept-Encoding', 'gzip,deflate'),
+		('Accept-Charset', 'ISO-8859-1,utf-8;q=0.7,*;q=0.7'),
+		('Keep-Alive', '300'),
+		('Connection', 'keep-alive')]
+
+	browser.set_handle_robots(False)
+	return browser
+
 
 if __name__ == '__main__':
 	main()
