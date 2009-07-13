@@ -20,6 +20,9 @@ JOB_COUNT = 0
 JOB_ID_RE = r"\('([\w$]+)','(\d+)'\)"
 
 def get_browser():
+	"""Creates a browser object and prepares it to masquerade as a
+	real web browser by making it send appropriate headers with its
+	requests."""
 	browser = mechanize.Browser()
 
 	# I'm not sure which of these are required
@@ -31,13 +34,13 @@ def get_browser():
 		('Accept-Encoding', 'gzip,deflate'),
 		('Accept-Charset', 'ISO-8859-1,utf-8;q=0.7,*;q=0.7'),
 		('Keep-Alive', '300'),
-		('Connection', 'keep-alive')
-		]
+		('Connection', 'keep-alive')]
 
 	browser.set_handle_robots(False)
 	return browser
 
 def setup_debug(browser):
+	"""Makes the browser print debugging information."""
 	browser.set_debug_redirects(True)
 	# browser.set_debug_responses(True)
 	browser.set_debug_http(True)
@@ -49,9 +52,10 @@ def setup_debug(browser):
 	return browser
 
 def login(browser):
+	"""Logs the browser object in to the AppraisalZone web site with
+	the global credentials."""
 	print 'Logging in...'
 	browser.open(LOGIN_URL)
-	# TODO: browser.form = list(browser.forms())[0] ?
 	browser.select_form(nr=0)
 	browser[USERNAME_FIELD] = USERNAME
 	browser[PASSWORD_FIELD] = PASSWORD
@@ -59,21 +63,28 @@ def login(browser):
 	return browser
 
 def job_filter(control):
+	"""Filter function used to extract the job controls from the queue
+	form."""
 	return control.type == 'radio'
 
 def check_queue(browser):
+	"""Checks the queue page to see if there are any jobs listed on
+	it.  If so, tries to sign up for the first job available."""
+
 	print 'Checking queue...'
 	browser.open(QUEUE_URL)
 	browser.select_form(nr=0)
-
 	if filter(job_filter, browser.form.controls):
 		return get_job(browser)
 	else:
 		print ' - Found no jobs...'
-
 	return browser
 
 def get_job_id(control):
+	"""Pulls the ASP.NET postback control name and the job id out of
+	the 'onclick' event associated with the given control, which
+	should be a radio control representing the yes or no answers for
+	signing up for a job in the queue."""
 	assert len(control.items) == 2, \
 		'Expected 2 items in the radio control, got %d' % len(control.items)
 	item = control.items[-1]
@@ -89,18 +100,18 @@ def get_job_id(control):
 	return match.groups()
 
 def get_job(browser):
+	"""Signs up for the first job in the queue."""
 	global JOB_LIMIT, JOB_COUNT
-	if JOB_COUNT >= JOB_LIMIT:
-		print ' * Reached job limit for this session.'
-		print ' * Exiting.'
-		sys.exit()
 
 	timestamp = time.strftime('%Y%m%d-%H%M%S')
 
-	filename = 'queue-%s.html' % timestamp
+	filename = 'output/queue-%s.html' % timestamp
 	print ' * Writing queue response to %s...' % filename
 	file(filename, 'w').write(browser.response().read())
 
+	# Get the first job control from the list, and determine the job
+	# id number and the name of the control expected by the ASP.NET
+	# postback machinery.
 	job_controls = filter(job_filter, browser.form.controls)
 	job_control = job_controls[0]
 	control_name, job_id = get_job_id(job_control)
@@ -108,7 +119,9 @@ def get_job(browser):
 	# Set the appropriate values on the form
 	job_control.value = ['1']
 
-	# Dumb ASP.NET postback stuff
+	# Dumb ASP.NET postback stuff which is set in JavaScript in a real
+	# browser.  The fields are hidden, so they need to be marked as
+	# not readonly before we can set their values.
 	c = browser.form.find_control('__EVENTTARGET')
 	c.readonly = False
 	c.value = control_name
@@ -117,25 +130,39 @@ def get_job(browser):
 	c.readonly = False
 	c.value = job_id
 
+	# Submit the form
 	print ' * Getting job id %s...' % job_id
 	browser.submit()
 	JOB_COUNT += 1
 
-	filename = 'response-%s.html' % timestamp
+	filename = 'output/response-%s.html' % timestamp
 	print ' * Writing post-submit response to %s...' % filename
 	file(filename, 'w').write(browser.response().read())
 
-	# Check the queue again, to see if there are any more jobs
-	# available
+	# If we've hit the job limit for this session, exit
+	if JOB_COUNT >= JOB_LIMIT:
+		print ' * Reached job limit for this session.'
+		print ' * Exiting.'
+		sys.exit()
+
+	# Check the queue again immediately, to see if there are any more
+	# jobs available
 	return check_queue(browser)
 
 def main():
+	"""The program's main loop.  Creates a browser object, signs it in
+	to the site, and then polls the queue page at random intervals
+	looking for new jobs."""
+
 	start = datetime.datetime.now()
 	print 'Starting at %s' % start
 
+	# Get a browser object to work with and log in to the site
 	browser = get_browser()
 	login(browser)
 
+	# Until an error occurs or the maximum number of jobs have been
+	# fetched, check on the job queue at random intervals
 	while 1:
 		check_queue(browser)
 
