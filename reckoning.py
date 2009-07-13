@@ -6,16 +6,15 @@ LOGIN_URL = 'https://appraisalzone.lendervend.com/Default.aspx'
 USERNAME = 'kcnorris'
 PASSWORD = 'Remember1!'
 
-FORM_NAME = 'aspnetForm'
 USERNAME_FIELD = 'ctl00$cph_content$tb_username'
 PASSWORD_FIELD = 'ctl00$cph_content$tb_password'
 
-USER_AGENT = 'Mozilla/5.0 (Windows; U; MSIE 7.0; Windows NT 6.0; en-US)'
-
-EMPTY_CHECKSUM = '256f163a93109a1b99b178adeeb7d209'
-
 JOB_LIMIT = 3
 JOB_COUNT = 0
+
+# Keep track of which job IDs we have seen, so we don't sign up for
+# the same one again if it is manually removed from the pipeline
+SEEN_JOBS = []
 
 JOB_ID_RE = r"\('([\w$]+)','(\d+)'\)"
 
@@ -67,7 +66,7 @@ def check_queue(browser):
 
 def get_job(browser):
 	"""Signs up for the first job in the queue."""
-	global JOB_LIMIT, JOB_COUNT
+	global JOB_LIMIT, JOB_COUNT, SEEN_JOBS
 
 	timestamp = time.strftime('%Y%m%d-%H%M%S')
 
@@ -81,6 +80,12 @@ def get_job(browser):
 	job_controls = filter(job_filter, browser.form.controls)
 	job_control = job_controls[0]
 	control_name, job_id = get_job_id(job_control)
+
+	# Skip jobs we've already signed up for once (for when Kyle
+	# manually removes jobs from his pipeline)
+	if job_id in SEEN_JOBS:
+		print ' * Skipping previously-accepted job #%s...' % job_id
+		return browser
 
 	# Set the appropriate values on the form
 	job_control.value = ['1']
@@ -100,6 +105,7 @@ def get_job(browser):
 	print ' * Getting job id %s...' % job_id
 	browser.submit()
 	JOB_COUNT += 1
+	SEEN_JOBS.append(job_id)
 
 	filename = 'output/response-%s.html' % timestamp
 	print ' * Writing post-submit response to %s...' % filename
