@@ -1,23 +1,23 @@
-import datetime, hashlib, logging, random, re, sys, time
+#!/usr/bin/env python
+
+import datetime
+import functools
+import hashlib
+import logging
+import random
+import re
+import sys
+import time
+
 import mechanize
 
-QUEUE_URL = 'https://appraisalzone.lendervend.com/SECURE/plus/pfac/QueuePage.aspx'
-LOGIN_URL = 'https://appraisalzone.lendervend.com/Default.aspx'
-USERNAME = 'kcnorris'
-PASSWORD = 'Remember1!'
-
-USERNAME_FIELD = 'ctl00$cph_content$tb_username'
-PASSWORD_FIELD = 'ctl00$cph_content$tb_password'
-
-JOB_LIMIT = 3
-JOB_COUNT = 0
+# Reckoning configuration
+import config
 
 # Keep track of which job IDs we have seen, so we don't sign up for
 # the same one again if it is manually removed from the pipeline
+JOB_COUNT = 0
 SEEN_JOBS = []
-
-JOB_ID_RE = r"\('([\w$]+)','(\d+)'\)"
-
 
 def main():
 	"""The program's main loop.  Creates a browser object, signs it in
@@ -36,7 +36,7 @@ def main():
 	while 1:
 		check_queue(browser)
 
-		delay = random.randint(10, 60)
+		delay = random.randint(config.min_delay, config.max_delay)
 		print 'Sleeping for %d seconds...\n' % delay
 		time.sleep(delay)
 
@@ -44,10 +44,10 @@ def login(browser):
 	"""Logs the browser object in to the AppraisalZone web site with
 	the global credentials."""
 	print 'Logging in...'
-	browser.open(LOGIN_URL)
+	browser.open(config.login_url)
 	browser.select_form(nr=0)
-	browser[USERNAME_FIELD] = USERNAME
-	browser[PASSWORD_FIELD] = PASSWORD
+	browser[config.username_field] = config.username
+	browser[config.password_field] = config.password
 	browser.submit()
 	return browser
 
@@ -56,7 +56,7 @@ def check_queue(browser):
 	it.  If so, tries to sign up for the first job available."""
 
 	print 'Checking queue...'
-	browser.open(QUEUE_URL)
+	browser.open(config.queue_url)
 	browser.select_form(nr=0)
 	if filter(job_filter, browser.form.controls):
 		return get_job(browser)
@@ -66,7 +66,7 @@ def check_queue(browser):
 
 def get_job(browser):
 	"""Signs up for the first job in the queue."""
-	global JOB_LIMIT, JOB_COUNT, SEEN_JOBS
+	global JOB_COUNT, SEEN_JOBS
 
 	timestamp = time.strftime('%Y%m%d-%H%M%S')
 
@@ -112,7 +112,7 @@ def get_job(browser):
 	file(filename, 'w').write(browser.response().read())
 
 	# If we've hit the job limit for this session, exit
-	if JOB_COUNT >= JOB_LIMIT:
+	if JOB_COUNT >= config.job_limit:
 		print ' * Reached job limit for this session.'
 		print ' * Exiting.'
 		sys.exit()
@@ -138,7 +138,8 @@ def get_job_id(control):
 		'No onclick handler found for item %s' % item.id
 	onclick = item.attrs['onclick']
 
-	match = re.search(JOB_ID_RE, onclick)
+	job_id_pattern = r"\('([\w$]+)','(\d+)'\)"
+	match = re.search(job_id_pattern, onclick)
 	assert match is not None, \
 		'No job ID found in onclick event: %s' % onclick
 
