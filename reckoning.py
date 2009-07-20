@@ -4,10 +4,10 @@ import datetime
 import functools
 import hashlib
 import logging
-import random
 import re
 import sys
 import time
+from random import randint
 
 import mechanize
 
@@ -34,16 +34,16 @@ def main():
 	# Until an error occurs or the maximum number of jobs have been
 	# fetched, check on the job queue at random intervals
 	while 1:
-		check_queue(browser)
-
-		delay = random.randint(config.min_delay, config.max_delay)
-		print 'Sleeping for %d seconds...\n' % delay
-		time.sleep(delay)
+		try:
+			check_queue(browser)
+			time.sleep(randint(config.min_delay, config.max_delay))
+		except KeyboardInterrupt:
+			print '\nExiting.  Found %d job(s).' % JOB_COUNT
+			sys.exit()
 
 def login(browser):
 	"""Logs the browser object in to the AppraisalZone web site with
 	the global credentials."""
-	print 'Logging in...'
 	browser.open(config.login_url)
 	browser.select_form(nr=0)
 	browser[config.username_field] = config.username
@@ -54,25 +54,16 @@ def login(browser):
 def check_queue(browser):
 	"""Checks the queue page to see if there are any jobs listed on
 	it.  If so, tries to sign up for the first job available."""
-
-	print 'Checking queue...'
+	sys.stdout.write('. '); sys.stdout.flush()
 	browser.open(config.queue_url)
 	browser.select_form(nr=0)
 	if filter(job_filter, browser.form.controls):
 		return get_job(browser)
-	else:
-		print ' - Found no jobs...'
 	return browser
 
 def get_job(browser):
 	"""Signs up for the first job in the queue."""
 	global JOB_COUNT, SEEN_JOBS
-
-	timestamp = time.strftime('%Y%m%d-%H%M%S')
-
-	filename = 'output/queue-%s.html' % timestamp
-	print ' * Writing queue response to %s...' % filename
-	file(filename, 'w').write(browser.response().read())
 
 	# Get the first job control from the list, and determine the job
 	# id number and the name of the control expected by the ASP.NET
@@ -84,7 +75,6 @@ def get_job(browser):
 	# Skip jobs we've already signed up for once (for when Kyle
 	# manually removes jobs from his pipeline)
 	if job_id in SEEN_JOBS:
-		print ' * Skipping previously-accepted job #%s...' % job_id
 		return browser
 
 	# Set the appropriate values on the form
@@ -102,17 +92,14 @@ def get_job(browser):
 	c.value = job_id
 
 	# Submit the form
-	print ' * Getting job id %s...' % job_id
+	print 'Getting job id %s' % job_id,
 	browser.submit()
 	JOB_COUNT += 1
 	SEEN_JOBS.append(job_id)
 
-	filename = 'output/response-%s.html' % timestamp
-	print ' * Writing post-submit response to %s...' % filename
-	file(filename, 'w').write(browser.response().read())
-
 	# If we've hit the job limit for this session, exit
 	if JOB_COUNT >= config.job_limit:
+		print
 		print ' * Reached job limit for this session.'
 		print ' * Exiting.'
 		sys.exit()
@@ -184,4 +171,13 @@ def get_browser():
 
 
 if __name__ == '__main__':
+
+	# Prompt for username and password if they're not given
+	if getattr(config, 'username', None) is None:
+		setattr(config, 'username', raw_input('Username: '))
+
+	if getattr(config, 'password', None) is None:
+		import getpass
+		setattr(config, 'password', getpass.getpass('Password: '))
+
 	main()
