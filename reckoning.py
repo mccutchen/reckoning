@@ -9,6 +9,10 @@ import sys
 import time
 from random import randint
 
+# Fix sys.path to find our external dependencies
+sys.path.insert(0, 'ext')
+
+# External dependencies
 import mechanize
 
 # Reckoning configuration
