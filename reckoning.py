@@ -7,6 +7,7 @@ import logging
 import re
 import sys
 import time
+import urllib2
 from random import randint
 
 # Fix sys.path to find our external dependencies
@@ -41,6 +42,10 @@ def main():
         try:
             check_queue(browser)
             time.sleep(randint(config.min_delay, config.max_delay))
+        except urllib2.URLError:
+            # Start over
+            print '\nGot an error, starting over'
+            login(browser)
         except KeyboardInterrupt:
             print '\nExiting.  Found %d job(s).' % JOB_COUNT
             sys.exit()
@@ -96,7 +101,7 @@ def get_job(browser):
     c.value = job_id
 
     # Submit the form
-    print 'Getting job id %s' % job_id,
+    print '\nGetting job id %s' % job_id,
     browser.submit()
     JOB_COUNT += 1
     SEEN_JOBS.append(job_id)
