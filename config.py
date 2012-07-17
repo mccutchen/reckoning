@@ -1,8 +1,8 @@
 # Configuration file for Reckoning
 
 # Login information
-username = 'kcnorris'
-password = 'Remember1!'
+username = 'username'
+password = 'password'
 
 # The maximum number of jobs to get in one session
 job_limit = 5
